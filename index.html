@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>保安組條陳自動化產出工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        .report-font {
+            font-family: 'Noto Serif TC', serif;
+        }
+        .tab-active {
+            color: #1d4ed8;
+            border-bottom: 3px solid #1d4ed8;
+            background-color: #eff6ff;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        /* 自定義捲軸 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-blue-900 text-white p-3 md:p-4 shadow-lg flex justify-between items-center z-20 shrink-0">
+        <div class="flex items-center gap-2">
+            <i data-lucide="shield-check" class="w-6 h-6 text-blue-300"></i>
+            <h1 class="text-lg md:text-xl font-bold tracking-tight">保安條陳自動產出工具</h1>
+        </div>
+        <div class="flex items-center gap-2 bg-blue-800/50 px-3 py-1.5 rounded-full border border-blue-700">
+            <span class="text-xs opacity-80 text-blue-100 hidden sm:inline">報告人:</span>
+            <input 
+                id="userName"
+                type="text"
+                class="bg-transparent border-b border-blue-400 focus:outline-none w-16 md:w-24 text-center text-sm font-medium"
+                value="王炳睿"
+                oninput="updatePreview()"
+            >
+        </div>
+    </header>
+
+    <!-- Mobile Navigation Tabs -->
+    <nav class="flex md:hidden bg-white border-b border-slate-200 shrink-0 shadow-sm">
+        <button id="tabEdit" onclick="switchTab('edit')" class="flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 tab-active transition-all">
+            <i data-lucide="pencil-line" class="w-4 h-4"></i> 填寫資料
+        </button>
+        <button id="tabPreview" onclick="switchTab('preview')" class="flex-1 py-4 text-sm font-bold flex items-center justify-center gap-2 text-slate-500 transition-all">
+            <i data-lucide="eye" class="w-4 h-4"></i> 查看預覽
+        </button>
+    </nav>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- Editor Column -->
+        <aside id="editorSection" class="flex w-full md:w-1/2 p-4 md:p-8 overflow-y-auto border-r border-slate-200 bg-white">
+            <div class="w-full max-w-2xl mx-auto space-y-8 pb-32 md:pb-0">
+                <!-- Report Type Selection -->
+                <section>
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">請選擇報告情境</label>
+                    <select 
+                        id="reportType"
+                        class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl outline-none text-base font-medium transition-all hover:border-blue-300 cursor-pointer shadow-sm"
+                        onchange="renderForm()"
+                    >
+                        <optgroup label="例行性結報 (日結)">
+                            <option value="daily_normal">一般結報 (無特殊狀況)</option>
+                            <option value="daily_important_today">一般結報 (今日有重要場次)</option>
+                            <option value="daily_important_tomorrow">一般結報 (明日有預報場次)</option>
+                        </optgroup>
+                        <optgroup label="專案進度 (指揮所)">
+                            <option value="project_plan">專案 (前一日規劃)</option>
+                            <option value="project_start">專案 (當日初報/續報)</option>
+                            <option value="project_merge_daily">專案 (併入當日結報)</option>
+                        </optgroup>
+                        <optgroup label="臨時案件">
+                            <option value="single_report">單報 (地方突發或特定案件)</option>
+                        </optgroup>
+                    </select>
+                </section>
+
+                <div class="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent my-2"></div>
+
+                <!-- Input Fields Section -->
+                <div id="dynamicFields" class="space-y-6 animate-in fade-in duration-500">
+                    <!-- JS will populate this -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Preview Column -->
+        <main id="previewSection" class="hidden md:flex w-full md:w-1/2 p-4 md:p-8 flex-col bg-slate-50 shadow-inner h-full overflow-hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <i data-lucide="file-check-2" class="w-4 h-4"></i> 預覽產出結果
+                </h2>
+                <button 
+                    onclick="copyToClipboard()"
+                    id="copyBtn"
+                    class="flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-bold shadow-lg transition-all bg-blue-600 hover:bg-blue-700 active:scale-95 text-white ring-4 ring-blue-600/10"
+                >
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                    <span id="copyBtnText">複製條陳內容</span>
+                </button>
+            </div>
+            
+            <div class="flex-1 bg-white p-8 md:p-12 rounded-3xl shadow-2xl border border-slate-200 overflow-y-auto report-font text-base md:text-xl leading-loose select-text text-slate-800" id="previewContainer">
+                <div id="previewText" class="whitespace-pre-wrap"></div>
+            </div>
+            
+            <div class="mt-6 p-4 bg-white border border-blue-100 rounded-2xl shadow-sm text-[11px] md:text-sm text-blue-800 flex items-start gap-3">
+                <div class="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <i data-lucide="info" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <p class="font-bold mb-0.5">操作提醒</p>
+                    <p class="opacity-80 leading-relaxed">輸入資料後右側會即時更新。若需要多筆重要場次，可點擊「新增」按鈕增加項目。複製後請直接貼上至正式報告公文即可。</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Mobile Quick View Button -->
+    <button 
+        id="mobileViewBtn"
+        onclick="switchTab('preview')"
+        class="md:hidden fixed bottom-8 right-8 bg-blue-700 text-white w-16 h-16 rounded-full shadow-2xl z-30 flex items-center justify-center active:bg-blue-800 animate-bounce shadow-blue-500/50"
+    >
+        <i data-lucide="eye" class="w-8 h-8"></i>
+    </button>
+
+    <script>
+        // Initial Data Structure
+        let formData = {
+            todayDate: new Date().getDate(),
+            tomorrowDate: new Date().getDate() + 1,
+            todayCount: 10,
+            tomorrowCount: 8,
+            importantEventsToday: ["(一)「台灣護師工會」於衛福部前集遊，1010開始，1045結束，人數約800人。"],
+            importantEventsTomorrow: ["「勞工陣線」預計10時於立法院周邊舉辦陳情活動，預估人數100人。"],
+            caseTitle: '參選人質疑警方處置不當案',
+            caseSummary: '某政黨參選人於本(14)日召開記者會，質疑昨日於南投分局防處聚眾活動過程中，警方有違反行政中立之行為...',
+            caseFollowup: ['南投縣警局已於第一時間對外說明澄清。', '本組將持續追蹤後續輿情發展。'],
+            projectName: '0514專案',
+            projectLocation: '南投分局',
+            projectTarget: '南投縣政府召開「環境影響評估界定會議」，環保團體預告到場抗議。',
+            projectForce: '135',
+            projectCommander: '蔡宏澤',
+            projectZones: '4',
+            projectEquipment: '交通改道牌30面',
+            projectStartTime: '08:30',
+            projectLevel: '三級',
+            currentSituation: '目前現場約30名民眾聚集，秩序良好，正由南投分局加強勸導中。',
+            maxPeople: '30',
+            statusDesc: '狀況平和'
+        };
+
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // UI Tabs Logic
+        function switchTab(tab) {
+            const editor = document.getElementById('editorSection');
+            const preview = document.getElementById('previewSection');
+            const tabEdit = document.getElementById('tabEdit');
+            const tabPreview = document.getElementById('tabPreview');
+            const mobileBtn = document.getElementById('mobileViewBtn');
+
+            if (tab === 'edit') {
+                editor.classList.replace('hidden', 'flex');
+                preview.classList.replace('flex', 'hidden');
+                tabEdit.classList.add('tab-active');
+                tabEdit.classList.remove('text-slate-500');
+                tabPreview.classList.remove('tab-active');
+                tabPreview.classList.add('text-slate-500');
+                mobileBtn.classList.remove('hidden');
+            } else {
+                editor.classList.replace('flex', 'hidden');
+                preview.classList.replace('hidden', 'flex');
+                tabPreview.classList.add('tab-active');
+                tabPreview.classList.remove('text-slate-500');
+                tabEdit.classList.remove('tab-active');
+                tabEdit.classList.add('text-slate-500');
+                mobileBtn.classList.add('hidden');
+            }
+        }
+
+        // Form Rendering Logic
+        function renderForm() {
+            const type = document.getElementById('reportType').value;
+            const container = document.getElementById('dynamicFields');
+            let html = '';
+
+            // Dates & Counts
+            if (type.includes('daily')) {
+                html += `
+                <div class="bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
+                    <p class="text-xs font-bold text-blue-700 mb-4 flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> 日期與總場次設定</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-500">本日日期</label>
+                            <input type="number" oninput="updateField('todayDate', this.value)" class="w-full p-2.5 border rounded-lg" value="${formData.todayDate}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-500">本日總場次</label>
+                            <input type="number" oninput="updateField('todayCount', this.value)" class="w-full p-2.5 border rounded-lg" value="${formData.todayCount}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-500">明日日期</label>
+                            <input type="number" oninput="updateField('tomorrowDate', this.value)" class="w-full p-2.5 border rounded-lg" value="${formData.tomorrowDate}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 text-slate-500">明日總場次</label>
+                            <input type="number" oninput="updateField('tomorrowCount', this.value)" class="w-full p-2.5 border rounded-lg" value="${formData.tomorrowCount}">
+                        </div>
+                    </div>
+                </div>`;
+            }
+
+            // Dynamic List: Important Events
+            if (type === 'daily_important_today') {
+                html += `<div class="space-y-4">
+                    <label class="block text-sm font-bold text-slate-700">重要場次摘要 (將自動條列)</label>
+                    <div class="space-y-3">
+                        ${formData.importantEventsToday.map((ev, i) => `
+                            <div class="group relative bg-white border border-slate-200 p-3 rounded-xl hover:border-blue-200 transition-all">
+                                <textarea oninput="updateListItem('importantEventsToday', ${i}, this.value)" class="w-full p-2 border-none rounded text-sm h-28 resize-none focus:ring-0" placeholder="敘述活動背景、過程與結果...">${ev}</textarea>
+                                <button onclick="removeListItem('importantEventsToday', ${i})" class="absolute top-2 right-2 text-slate-300 hover:text-red-500 transition-colors"><i data-lucide="x-circle" class="w-5 h-5"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="addListItem('importantEventsToday')" class="w-full py-4 border-2 border-dashed border-slate-200 text-slate-400 rounded-xl flex items-center justify-center gap-2 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-all bg-white"><i data-lucide="plus-circle" class="w-4 h-4"></i> 新增場次摘要</button>
+                </div>`;
+            }
+
+             if (type === 'daily_important_tomorrow') {
+                html += `<div class="space-y-4">
+                    <label class="block text-sm font-bold text-slate-700">明日預報場次摘要</label>
+                    <div class="space-y-3">
+                        ${formData.importantEventsTomorrow.map((ev, i) => `
+                            <div class="relative bg-white border border-slate-200 p-3 rounded-xl">
+                                <textarea oninput="updateListItem('importantEventsTomorrow', ${i}, this.value)" class="w-full p-2 border-none text-sm h-24 resize-none focus:ring-0">${ev}</textarea>
+                                <button onclick="removeListItem('importantEventsTomorrow', ${i})" class="absolute top-2 right-2 text-slate-300 hover:text-red-500"><i data-lucide="x-circle" class="w-5 h-5"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="addListItem('importantEventsTomorrow')" class="w-full py-4 border-2 border-dashed border-slate-200 text-slate-400 rounded-xl flex items-center justify-center gap-2 text-sm font-medium hover:border-blue-300 hover:text-blue-600 transition-all bg-white"><i data-lucide="plus-circle" class="w-4 h-4"></i> 新增預報內容</button>
+                </div>`;
+            }
+
+            // Project Related
+            if (type.startsWith('project_')) {
+                html += `
+                <div class="space-y-6">
+                    <div class="bg-blue-900 text-white p-6 rounded-3xl shadow-xl">
+                        <p class="text-blue-300 text-[10px] font-bold uppercase tracking-widest mb-4">指揮所/專案基礎參數</p>
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-4">
+                            <div class="col-span-2 border-b border-white/10 pb-2">
+                                <label class="block text-[10px] opacity-60 font-bold mb-1">專案名稱</label>
+                                <input type="text" oninput="updateField('projectName', this.value)" class="bg-transparent w-full text-lg font-bold border-none p-0 focus:ring-0" value="${formData.projectName}">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] opacity-60 font-bold mb-1">轄區分局</label>
+                                <input type="text" oninput="updateField('projectLocation', this.value)" class="bg-transparent w-full text-sm font-medium border-none p-0 focus:ring-0" value="${formData.projectLocation}">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] opacity-60 font-bold mb-1">現場指揮官</label>
+                                <input type="text" oninput="updateField('projectCommander', this.value)" class="bg-transparent w-full text-sm font-medium border-none p-0 focus:ring-0" value="${formData.projectCommander}">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] opacity-60 font-bold mb-1">警力(名)</label>
+                                <input type="number" oninput="updateField('projectForce', this.value)" class="bg-transparent w-full text-sm font-medium border-none p-0 focus:ring-0" value="${formData.projectForce}">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] opacity-60 font-bold mb-1">開設時間/等級</label>
+                                <div class="flex gap-2">
+                                    <input type="text" oninput="updateField('projectStartTime', this.value)" class="bg-transparent w-16 text-sm font-medium border-none p-0 focus:ring-0" value="${formData.projectStartTime}">
+                                    <input type="text" oninput="updateField('projectLevel', this.value)" class="bg-transparent w-12 text-sm font-medium border-none p-0 focus:ring-0" value="${formData.projectLevel}">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <label class="block text-sm font-bold text-slate-700">狀況說明</label>
+                        <textarea oninput="updateField('projectTarget', this.value)" class="w-full p-4 border border-slate-200 rounded-2xl h-28 text-sm shadow-sm" placeholder="說明活動主旨、參與對象...">${formData.projectTarget}</textarea>
+                    </div>
+
+                    ${type !== 'project_plan' ? `
+                        <div class="space-y-4">
+                            <label class="block text-sm font-bold text-slate-700">現場最新進度</label>
+                            <textarea oninput="updateField('currentSituation', this.value)" class="w-full p-4 border border-slate-200 rounded-2xl h-24 text-sm shadow-sm">${formData.currentSituation}</textarea>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">目前最高人數</label>
+                                <input type="number" oninput="updateField('maxPeople', this.value)" class="w-full p-3 border border-slate-200 rounded-xl" value="${formData.maxPeople}">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-500 mb-1">當前氛圍</label>
+                                <input type="text" oninput="updateField('statusDesc', this.value)" class="w-full p-3 border border-slate-200 rounded-xl" value="${formData.statusDesc}">
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>`;
+            }
+
+            // Single Report (地方案件)
+            if (type === 'single_report') {
+                html += `<div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">報告標題 (括號內)</label>
+                        <input type="text" oninput="updateField('caseTitle', this.value)" class="w-full p-4 border rounded-2xl text-base shadow-sm" value="${formData.caseTitle}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">案情摘要</label>
+                        <textarea oninput="updateField('caseSummary', this.value)" class="w-full p-4 border rounded-2xl h-40 text-base shadow-sm leading-relaxed">${formData.caseSummary}</textarea>
+                    </div>
+                    <div class="space-y-3">
+                        <label class="block text-sm font-bold text-slate-700">後續處置 (逐條列出)</label>
+                        ${formData.caseFollowup.map((item, i) => `
+                            <div class="flex gap-2 group">
+                                <input class="flex-1 p-3 border border-slate-200 rounded-xl text-sm focus:border-blue-400 transition-all" value="${item}" oninput="updateListItem('caseFollowup', ${i}, this.value)">
+                                <button onclick="removeListItem('caseFollowup', ${i})" class="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><i data-lucide="minus-circle" class="w-5 h-5"></i></button>
+                            </div>
+                        `).join('')}
+                        <button onclick="addListItem('caseFollowup')" class="w-full py-3 border-2 border-dashed border-blue-100 text-blue-500 rounded-xl text-sm font-medium hover:bg-blue-50">+ 新增處置事項</button>
+                    </div>
+                </div>`;
+            }
+
+            container.innerHTML = html;
+            lucide.createIcons();
+            updatePreview();
+        }
+
+        // Logic Helpers
+        function updateField(key, value) {
+            formData[key] = value;
+            updatePreview();
+        }
+
+        function updateListItem(key, index, value) {
+            formData[key][index] = value;
+            updatePreview();
+        }
+
+        function addListItem(key) {
+            formData[key].push('');
+            renderForm();
+        }
+
+        function removeListItem(key, index) {
+            formData[key].splice(index, 1);
+            renderForm();
+        }
+
+        function updatePreview() {
+            const type = document.getElementById('reportType').value;
+            const userName = document.getElementById('userName').value;
+            const { todayDate, tomorrowDate, todayCount, tomorrowCount, importantEventsToday, importantEventsTomorrow, caseTitle, caseSummary, caseFollowup, projectName, projectLocation, projectTarget, projectForce, projectCommander, projectZones, projectEquipment, projectStartTime, projectLevel, currentSituation, maxPeople, statusDesc } = formData;
+            
+            let content = '';
+
+            switch (type) {
+                case 'daily_normal':
+                    content = `保安組報告（結報）：\n\n一、本（${todayDate}）日全國警察機關防處聚眾活動計${todayCount}場，無危安顧慮之聚眾活動，均由轄區警察局自行規劃勤務防處，本組併續掌控。\n二、明（${tomorrowDate}）日全國警察機關防處聚眾活動${tomorrowCount}場，尚無其他重要活動情資，本組偕同保防組及各警察機關持續掌握，遇況即時陳報。\n\n        職  ${userName}  敬陳`;
+                    break;
+                case 'daily_important_today':
+                    const todayDetails = importantEventsToday.map((ev, i) => `(${i + 1})${ev}`).join('\n');
+                    content = `保安組報告（結報）：\n\n一、本（${todayDate}）日全國警察機關防處聚眾活動計${todayCount}場，其中較重要場次${importantEventsToday.length}場，摘要如下：\n${todayDetails}\n\n二、其餘本日較無危安顧慮之聚眾活動，均由轄區警察局自行規劃勤務防處，本組併續掌控。\n三、明（${tomorrowDate}）日全國警察機關防處聚眾活動計${tomorrowCount}場，尚無其他重要活動情資，本組偕同保防組及各警察機關持續掌握，遇況即時陳報。\n\n        職  ${userName}  敬陳`;
+                    break;
+                case 'daily_important_tomorrow':
+                    const tomorrowDetails = importantEventsTomorrow.map((ev, i) => `(${i+1})${ev}`).join('\n');
+                    content = `保安組報告（結報）：\n\n一、本（${todayDate}）日全國警察機關防處聚眾活動計${todayCount}場，無危安顧慮之聚眾活動，均由轄區警察局自行規劃勤務防處，本組併續掌控。\n二、明（${tomorrowDate}）日全國警察機關防處聚眾活動${tomorrowCount}場，其中較重要場次${importantEventsTomorrow.length}場，活動概況如下：\n${tomorrowDetails}\n\n三、本組將偕同保防組及各警察機關持續掌握，遇況即時陳報。\n\n        職  ${userName}  謹陳`;
+                    break;
+                case 'single_report':
+                    const items = caseFollowup.map((item, i) => `（${['一', '二', '三', '四', '五'][i]}）${item}`).join('\n');
+                    content = `保安組報告（${caseTitle}）：\n\nㄧ、案情摘要：\n${caseSummary}\n\n二、後續處置：\n${items}\n\n三、本組偕同各警察局持續掌握，遇況即時陳報。\n\n      職  ${userName}  敬陳`;
+                    break;
+                case 'project_plan':
+                    content = `保安組報告：\n${projectName}規劃執行情形\n\n一、狀況：\n${projectTarget}\n\n二、勤務規劃：\n陳情活動現場由${projectLocation}防處，分局長${projectCommander}擔任指揮官，規劃${projectZones}分區，共計使用警力${projectForce}名；${projectEquipment}。\n\n三、專案聯合指揮所開設：\n(一)本署：${projectStartTime}起${projectLevel}開設。\n(二)轄區警局：8時起${projectLevel}開設。\n\n\t職  ${userName}  敬陳`;
+                    break;
+                case 'project_start':
+                    content = `保安組報告（${projectName}—初報）：\n\n一、${projectTarget}\n\n二、勤務部署：\n本(${todayDate})日勤務由${projectLocation}防處，分局長${projectCommander}擔任現場指揮官，劃設${projectZones}個分區，共使用警力${projectForce}名。\n\n三、現場狀況：\n${currentSituation}\n\n四、本署專案聯合指揮所於本(${todayDate})日${projectStartTime}起${projectLevel}開設，本組持續與本署保防組、勤指中心及轄區警局掌握現場狀況，遇況即時陳報。\n\n    職 ${userName} 敬陳`;
+                    break;
+                case 'project_merge_daily':
+                    content = `保安組報告（${projectName}併日結報）：\n\n一、本（${todayDate}）日全國警察機關防處聚眾活動，計${todayCount}場，重要活動計1場，為${projectName}，本署自${projectStartTime}起成立專案指揮所掌控活動。\n\n二、專案現場狀況：${currentSituation}，現場人數最多${maxPeople}人，${statusDesc}。\n\n三、本署「${projectName}」指揮所擬於18時55分結束開設，後續由轄區警局防處，本組併續掌控。\n\n四、明（${tomorrowDate}）日全國警察機關防處聚眾活動計${tomorrowCount}場，尚無其他重要活動情資，本組偕同保防組及各警察機關持續掌握，遇況即時陳報。\n\n       職 ${userName} 敬陳`;
+                    break;
+            }
+            document.getElementById('previewText').innerText = content;
+        }
+
+        function copyToClipboard() {
+            const text = document.getElementById('previewText').innerText;
+            const el = document.createElement('textarea');
+            el.value = text;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+
+            const btn = document.getElementById('copyBtn');
+            const btnText = document.getElementById('copyBtnText');
+            btn.classList.replace('bg-blue-600', 'bg-green-600');
+            btn.classList.replace('ring-blue-600/10', 'ring-green-600/10');
+            btnText.innerText = '成功複製到剪貼簿';
+            
+            setTimeout(() => {
+                btn.classList.replace('bg-green-600', 'bg-blue-600');
+                btn.classList.replace('ring-green-600/10', 'ring-blue-600/10');
+                btnText.innerText = '複製條陳內容';
+            }, 2000);
+        }
+
+        // Initialize Form on load
+        window.onload = renderForm;
+    </script>
+</body>
+</html>
