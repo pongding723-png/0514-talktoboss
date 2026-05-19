@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>保安組條陳自動化產生器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Microsoft JhengHei', sans-serif; background-color: #f1f5f9; -webkit-tap-highlight-color: transparent; }
+        .report-preview { white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; word-break: break-all; }
+        input, textarea, select { font-size: 16px !important; border-radius: 0.75rem; border: 1px solid #cbd5e1; padding: 0.8rem; width: 100%; transition: all 0.2s; background: white; }
+        input:focus, textarea:focus { border-color: #3b82f6; ring: 3px; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        label { font-weight: 700; font-size: 0.9rem; color: #334155; margin-bottom: 0.4rem; display: block; }
+        .mode-btn { flex: 1; padding: 1rem 0.5rem; font-weight: bold; border-radius: 1rem; transition: all 0.3s; border: 2px solid transparent; }
+        .mode-btn.active { background-color: #2563eb; color: white; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+        .mode-btn.inactive { background-color: white; color: #64748b; border-color: #e2e8f0; }
+        .touch-button { active: transform: scale(0.96); transition: transform 0.1s; }
+        .card { background: white; border-radius: 1.5rem; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); border: 1px solid rgba(255,255,255,0.7); }
+        /* 模板文字編輯框特化樣式 */
+        .tpl-textarea { font-family: monospace; font-size: 13px !important; line-height: 1.4; background-color: #f8fafc; border-color: #e2e8f0; }
+    </style>
+</head>
+<body class="p-3 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-6 text-center">
+            <h1 class="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">保安組條陳自動產生器</h1>
+        </header>
+
+        <div class="flex space-x-2 mb-6 bg-white/50 p-1.5 rounded-2xl border border-slate-200">
+            <button onclick="setMode('closing')" id="btn-closing" class="mode-btn active">結報</button>
+            <button onclick="setMode('single')" id="btn-single" class="mode-btn inactive">單報</button>
+            <button onclick="setMode('project')" id="btn-project" class="mode-btn inactive">專案</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 左側：輸入與設定區域 -->
+            <div class="space-y-6">
+                <div class="card p-5 md:p-8">
+                    <div id="sub-mode-container" class="hidden mb-6 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button onclick="setProjectSubMode('planning')" id="btn-p-plan" class="p-sub-btn py-3 text-sm rounded-xl border-2 font-bold transition-all">規劃</button>
+                        <button onclick="setProjectSubMode('initial')" id="btn-p-init" class="p-sub-btn py-3 text-sm rounded-xl border-2 font-bold transition-all">初報</button>
+                        <button onclick="setProjectSubMode('update')" id="btn-p-upd" class="p-sub-btn py-3 text-sm rounded-xl border-2 font-bold transition-all">續報</button>
+                        <button onclick="setProjectSubMode('final')" id="btn-p-fin" class="p-sub-btn py-3 text-sm rounded-xl border-2 font-bold transition-all">結報</button>
+                    </div>
+                    <div id="form-container" class="space-y-5"></div>
+                </div>
+
+                <div class="card p-5 md:p-8 border border-slate-200">
+                    <button onclick="toggleTemplateSettings()" class="w-full flex justify-between items-center text-slate-800 hover:text-blue-600 transition-colors focus:outline-none">
+                        <span class="text-base md:text-lg font-bold flex items-center"><span class="mr-2">⚙️</span> 模板自訂與設定</span>
+                        <span id="template-arrow" class="transform transition-transform duration-200 text-slate-400">▼</span>
+                    </button>
+                    
+                    <div id="template-settings-panel" class="hidden mt-6 space-y-4 border-t border-slate-100 pt-4">
+                        <!-- 內部小頁籤 -->
+                        <div class="flex space-x-1 bg-slate-100 p-1 rounded-xl mb-4">
+                            <button type="button" onclick="setTemplateTab('closing')" id="tab-tpl-closing" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-blue-600 shadow-sm">結報模板</button>
+                            <button type="button" onclick="setTemplateTab('single')" id="tab-tpl-single" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-600 hover:bg-white/50">單報模板</button>
+                            <button type="button" onclick="setTemplateTab('project')" id="tab-tpl-project" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-600 hover:bg-white/50">專案模板</button>
+                        </div>
+
+                        <!-- 結報模板自訂 -->
+                        <div id="tpl-section-closing" class="space-y-4 text-xs">
+                            <div>
+                                <label class="text-xs text-slate-500">結報開頭</label>
+                                <input type="text" id="tpl-closing-header" oninput="updateCustomTemplate()" class="tpl-textarea p-2">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">今日「無」重要活動模板</label>
+                                <textarea id="tpl-closing-today-none" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{本日日期}、{本日總場次}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">今日「有」重要活動前導文</label>
+                                <textarea id="tpl-closing-today-has" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{本日日期}、{本日總場次}、{本日重要場次}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">今日重要場次條列單項</label>
+                                <textarea id="tpl-closing-today-item" rows="3" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{項目編號}、{團體人名}、{事由}、{地點}、{活動類型}、{開始時間}、{結束時間}、{現場人數}、{活動狀況}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">其餘無危安活動敘述</label>
+                                <textarea id="tpl-closing-today-rest" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                            </div>
+                            <div class="border-t border-slate-100 pt-3">
+                                <label class="text-xs text-slate-500">明日「無」重要活動模板</label>
+                                <textarea id="tpl-closing-tomorrow-none" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{明日本日序號}、{明日日期}、{明日總場次}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">明日「有」重要活動前導文</label>
+                                <textarea id="tpl-closing-tomorrow-has" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{明日本日序號}、{明日日期}、{明日總場次}、{明日重要場次}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">明日重要場次條列單項</label>
+                                <textarea id="tpl-closing-tomorrow-item" rows="3" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{項目編號}、{團體人名}、{事由}、{地點}、{活動類型}、{時間}、{預估人數}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">明日有重要場次之結尾備註</label>
+                                <textarea id="tpl-closing-tomorrow-footer-has" rows="2" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- 單報模板自訂 -->
+                        <div id="tpl-section-single" class="hidden space-y-4 text-xs">
+                            <div>
+                                <label class="text-xs text-slate-500">單報完整模板 (支援段落空行)</label>
+                                <textarea id="tpl-single-main" rows="12" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{案件名稱}、{案情摘要}、{後續處置}、{提報單位}、{職章姓名}</span>
+                            </div>
+                        </div>
+
+                        <!-- 專案模板自訂 -->
+                        <div id="tpl-section-project" class="hidden space-y-4 text-xs">
+                            <div>
+                                <label class="text-xs text-slate-500">1. 專案規劃執行模板</label>
+                                <textarea id="tpl-project-planning" rows="8" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{專案名稱}、{狀況描述}、{防處機關}、{指揮官}、{分區數}、{警力數}、{阻材描述}、{本署開設}、{機關開設}、{職章姓名}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">2. 專案初報模板</label>
+                                <textarea id="tpl-project-initial" rows="8" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{專案名稱}、{狀況描述}、{勤務部署情形}、{目前現場狀況}、{職章姓名}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">3. 專案續報模板</label>
+                                <textarea id="tpl-project-update" rows="6" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{專案名稱}、{狀況簡述}、{目前活動狀況}、{職章姓名}</span>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">4. 專案結報模板</label>
+                                <textarea id="tpl-project-final" rows="8" oninput="updateCustomTemplate()" class="tpl-textarea p-2"></textarea>
+                                <span class="text-[10px] text-slate-400">變數：{專案名稱}、{狀況簡述}、{目前現場狀況}、{擬處內容}、{職章姓名}</span>
+                            </div>
+                        </div>
+
+                        <!-- 儲存與重設按鈕區 -->
+                        <div class="flex space-x-2 pt-4 border-t border-slate-100">
+                            <button type="button" id="btn-save-tpl" onclick="saveCustomTemplates()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold text-sm shadow-md transition-all">
+                                💾 儲存自訂模板
+                            </button>
+                            <button type="button" id="btn-reset-tpl" onclick="resetDefaultTemplates()" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-bold text-sm transition-all">
+                                🔄 恢復預設模板
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sticky top-6">
+                <div class="bg-slate-900 text-slate-100 p-6 md:p-8 rounded-[2rem] shadow-2xl flex flex-col min-h-[550px] lg:min-h-[750px] border-4 border-slate-800">
+                    <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                        <h2 class="text-xl font-bold flex items-center tracking-wide">
+                            <span class="mr-3 text-blue-400">📋</span> 條陳預覽
+                        </h2>
+                        <button onclick="copyReport()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-sm font-black shadow-lg shadow-blue-900/20 touch-button transition-all">
+                            複製全文
+                        </button>
+                    </div>
+                    <div id="report-output" class="report-preview text-base md:text-lg leading-relaxed flex-grow overflow-auto mb-6 bg-slate-800/40 p-5 rounded-2xl border border-slate-700/50"></div>
+                    
+                    <div class="pt-5 border-t border-slate-700">
+                        <div class="flex items-center space-x-4">
+                            <label class="mb-0 text-slate-400 whitespace-nowrap font-medium">職章姓名：</label>
+                            <input type="text" id="signer-name" value="王炳睿" oninput="updateReport()" class="bg-slate-800 text-white border-slate-600 w-36 py-2 px-4 rounded-xl text-sm font-bold">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'closing';
+        let projectSubMode = 'planning';
+        let activeTemplateTab = 'closing';
+        
+        const d = new Date();
+        const todayDate = d.getDate();
+        const nextDate = new Date(d.getTime() + 86400000).getDate();
+
+        // 系統內建之標準預設模板常數
+        const DEFAULT_TEMPLATES = {
+            // 結報
+            closing_header: "保安組報告（結報）：",
+            closing_today_none: "一、本（{本日日期}）日全國警察機關防處聚眾活動計{本日總場次}場，無危安顧慮之聚眾活動，均由轄區警察局自行規劃勤務防處，本組併續掌控。",
+            closing_today_has: "一、本（{本日日期}）日全國警察機關防處聚眾活動計{本日總場次}場，其中重要場次計有{本日重要場次}場，摘要如下：",
+            closing_today_item: "（{項目編號}）{團體人名}等人，以「{事由}」為由，假{地點}舉行{活動類型}活動，{開始時間}活動開始，{結束時間}活動結束，現場人數{現場人數}人，{活動狀況}。",
+            closing_today_rest: "二、其餘本日較無危安顧慮之聚眾活動，均由轄區警察局自行規劃勤務防處，本組併續掌控。",
+            closing_tomorrow_none: "{明日本日序號}、明（{明日日期}）日全國警察機關防處聚眾活動計{明日總場次}場，尚無其他重要活動情資，本組偕同保防組及各警察機關持續掌握，遇況即時陳報。",
+            closing_tomorrow_has: "{明日本日序號}、明（{明日日期}）日全國警察機關防處聚眾活動計{明日總場次}場，其中重要活動計有{明日重要場次}場，活動概況如下：",
+            closing_tomorrow_item: "（{項目編號}）{團體人名}等人，以「{事由}」為由，預計於{時間}假{地點}舉行{活動類型}活動，預估人數{預估人數}人。",
+            closing_tomorrow_footer_has: "本組將偕同保防組及轄區警察局持續掌握，遇況即時陳報。",
+            
+            // 單報
+            single_main: "保安組報告（{案件名稱}）：\n\n一、案情摘要：\n{案情摘要}\n\n二、後續處置：\n{後續處置}\n\n三、本組偕同{提報單位}持續掌握，遇況即時陳報。\n\n　　職 {職章姓名} 敬陳",
+            
+            // 專案
+            project_planning: "保安組報告：\n{專案名稱}規劃執行情形\n\n一、狀況：\n{狀況描述}\n\n二、勤務規劃：\n陳情活動現場由{防處機關}防處，{指揮官}擔任指揮官，規劃{分區數}，共計使用警力{警力數}；{阻材描述}。\n\n三、專案聯合指揮所開設：\n（一）本署：{本署開設}。\n（二）各機關：{機關開設}。\n\n　　職 {職章姓名} 敬陳",
+            project_initial: "保安組報告（{專案名稱}初報）：\n\n一、狀況：\n{狀況描述}\n\n二、勤務部署情形：\n{勤務部署情形}\n\n三、目前現場狀況：\n{目前現場狀況}\n\n四、本組持續與各專案任務編組掌握現場狀況，遇況即時陳報。\n\n　　職 {職章姓名} 敬陳",
+            project_update: "保安組報告（{專案名稱}--續報）：\n\n一、{狀況簡述}，活動概況已陳報於前。\n\n二、目前活動狀況：\n{目前活動狀況}\n\n三、本組持續與各專案任務編組掌握現場狀況，遇況即時陳報。\n\n　　職 {職章姓名} 敬陳",
+            project_final: "保安組報告（{專案名稱}結報）：\n\n一、狀況：\n{狀況簡述}\n\n二、目前現場狀況：\n{目前現場狀況}\n\n三、擬處：\n{擬處內容}\n\n　　職 {職章姓名} 敬陳"
+        };
+
+        // 載入當前設定
+        let currentTemplates = {};
+
+        function loadTemplatesFromStorage() {
+            const stored = localStorage.getItem('police_report_templates');
+            if (stored) {
+                try {
+                    currentTemplates = JSON.parse(stored);
+                    // 補足可能缺失的欄位
+                    for (let key in DEFAULT_TEMPLATES) {
+                        if (currentTemplates[key] === undefined) {
+                            currentTemplates[key] = DEFAULT_TEMPLATES[key];
+                        }
+                    }
+                } catch(e) {
+                    currentTemplates = { ...DEFAULT_TEMPLATES };
+                }
+            } else {
+                currentTemplates = { ...DEFAULT_TEMPLATES };
+            }
+            writeTemplatesToFields();
+        }
+
+        function writeTemplatesToFields() {
+            document.getElementById('tpl-closing-header').value = currentTemplates.closing_header;
+            document.getElementById('tpl-closing-today-none').value = currentTemplates.closing_today_none;
+            document.getElementById('tpl-closing-today-has').value = currentTemplates.closing_today_has;
+            document.getElementById('tpl-closing-today-item').value = currentTemplates.closing_today_item;
+            document.getElementById('tpl-closing-today-rest').value = currentTemplates.closing_today_rest;
+            document.getElementById('tpl-closing-tomorrow-none').value = currentTemplates.closing_tomorrow_none;
+            document.getElementById('tpl-closing-tomorrow-has').value = currentTemplates.closing_tomorrow_has;
+            document.getElementById('tpl-closing-tomorrow-item').value = currentTemplates.closing_tomorrow_item;
+            document.getElementById('tpl-closing-tomorrow-footer-has').value = currentTemplates.closing_tomorrow_footer_has;
+
+            document.getElementById('tpl-single-main').value = currentTemplates.single_main;
+
+            document.getElementById('tpl-project-planning').value = currentTemplates.project_planning;
+            document.getElementById('tpl-project-initial').value = currentTemplates.project_initial;
+            document.getElementById('tpl-project-update').value = currentTemplates.project_update;
+            document.getElementById('tpl-project-final').value = currentTemplates.project_final;
+        }
+
+        function updateCustomTemplate() {
+            currentTemplates.closing_header = document.getElementById('tpl-closing-header').value;
+            currentTemplates.closing_today_none = document.getElementById('tpl-closing-today-none').value;
+            currentTemplates.closing_today_has = document.getElementById('tpl-closing-today-has').value;
+            currentTemplates.closing_today_item = document.getElementById('tpl-closing-today-item').value;
+            currentTemplates.closing_today_rest = document.getElementById('tpl-closing-today-rest').value;
+            currentTemplates.closing_tomorrow_none = document.getElementById('tpl-closing-tomorrow-none').value;
+            currentTemplates.closing_tomorrow_has = document.getElementById('tpl-closing-tomorrow-has').value;
+            currentTemplates.closing_tomorrow_item = document.getElementById('tpl-closing-tomorrow-item').value;
+            currentTemplates.closing_tomorrow_footer_has = document.getElementById('tpl-closing-tomorrow-footer-has').value;
+
+            currentTemplates.single_main = document.getElementById('tpl-single-main').value;
+
+            currentTemplates.project_planning = document.getElementById('tpl-project-planning').value;
+            currentTemplates.project_initial = document.getElementById('tpl-project-initial').value;
+            currentTemplates.project_update = document.getElementById('tpl-project-update').value;
+            currentTemplates.project_final = document.getElementById('tpl-project-final').value;
+
+            updateReport();
+        }
+
+        function saveCustomTemplates() {
+            localStorage.setItem('police_report_templates', JSON.stringify(currentTemplates));
+            const btn = document.getElementById('btn-save-tpl');
+            btn.innerText = "✅ 儲存成功";
+            btn.classList.replace('bg-emerald-600', 'bg-slate-700');
+            setTimeout(() => {
+                btn.innerText = "💾 儲存自訂模板";
+                btn.classList.replace('bg-slate-700', 'bg-emerald-600');
+            }, 1500);
+            updateReport();
+        }
+
+        function resetDefaultTemplates() {
+            currentTemplates = { ...DEFAULT_TEMPLATES };
+            writeTemplatesToFields();
+            localStorage.setItem('police_report_templates', JSON.stringify(currentTemplates));
+            const btn = document.getElementById('btn-reset-tpl');
+            btn.innerText = "🔄 已恢復預設";
+            setTimeout(() => {
+                btn.innerText = "🔄 恢復預設模板";
+            }, 1500);
+            updateReport();
+        }
+
+        const toChineseNum = (n) => ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'][n] || n;
+
+        function formatPoints(text) {
+            if (!text) return "";
+            return text.split('\n')
+                .map(l => l.trim())
+                .filter(l => l !== '')
+                .map((l, i) => {
+                    const cleanLine = l.replace(/^[\(（][一二三四五六七八九十0-9]+[\)）]/, '').replace(/^[一二三四五六七八九十0-9]+[\.、]/, '').trim();
+                    return `（${toChineseNum(i + 1)}）${cleanLine}`;
+                }).join('\n');
+        }
+
+        function toggleTemplateSettings() {
+            const panel = document.getElementById('template-settings-panel');
+            const arrow = document.getElementById('template-arrow');
+            const isHidden = panel.classList.contains('hidden');
+            if (isHidden) {
+                panel.classList.remove('hidden');
+                arrow.classList.add('rotate-180');
+            } else {
+                panel.classList.add('hidden');
+                arrow.classList.remove('rotate-180');
+            }
+        }
+
+        function setTemplateTab(tab) {
+            activeTemplateTab = tab;
+            document.getElementById('tab-tpl-closing').className = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-600 hover:bg-white/50';
+            document.getElementById('tab-tpl-single').className = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-600 hover:bg-white/50';
+            document.getElementById('tab-tpl-project').className = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-600 hover:bg-white/50';
+
+            const activeBtnClass = 'flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-blue-600 shadow-sm';
+            document.getElementById(`tab-tpl-${tab}`).className = activeBtnClass;
+
+            document.getElementById('tpl-section-closing').classList.add('hidden');
+            document.getElementById('tpl-section-single').classList.add('hidden');
+            document.getElementById('tpl-section-project').classList.add('hidden');
+
+            document.getElementById(`tpl-section-${tab}`).classList.remove('hidden');
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.add('inactive');
+            });
+            document.getElementById(`btn-${mode}`).classList.add('active');
+            document.getElementById(`btn-${mode}`).classList.remove('inactive');
+            document.getElementById('sub-mode-container').classList.toggle('hidden', mode !== 'project');
+            renderForm();
+        }
+
+        function setProjectSubMode(sub) {
+            projectSubMode = sub;
+            document.querySelectorAll('.p-sub-btn').forEach(btn => {
+                btn.className = 'p-sub-btn py-3 text-sm rounded-xl border-2 border-slate-100 text-slate-400 font-bold';
+            });
+            const map = { planning: 'btn-p-plan', initial: 'btn-p-init', update: 'btn-p-upd', final: 'btn-p-fin' };
+            document.getElementById(map[sub]).className = 'p-sub-btn py-3 text-sm rounded-xl border-blue-500 bg-blue-50 text-blue-700 font-bold';
+            renderForm();
+        }
+
+        function renderForm() {
+            const container = document.getElementById('form-container');
+            if (currentMode === 'closing') {
+                container.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="bg-blue-50/70 p-5 rounded-2xl border border-blue-100 shadow-sm">
+                            <p class="font-bold text-blue-800 mb-4 flex items-center text-lg"><span class="mr-2">📅</span> 本日 (${todayDate}日)</p>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div><label>總場次</label><input type="number" id="t-total" value="0" oninput="updateReport()"></div>
+                                <div><label>重要場次</label><input type="number" id="t-imp-count" value="0" oninput="handleImpChange('t')"></div>
+                            </div>
+                            <div id="t-imp-fields" class="space-y-4"></div>
+                        </div>
+                        <div class="bg-emerald-50/70 p-5 rounded-2xl border border-emerald-100 shadow-sm">
+                            <p class="font-bold text-emerald-800 mb-4 flex items-center text-lg"><span class="mr-2">📅</span> 明日 (${nextDate}日)</p>
+                            <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div><label>總場次</label><input type="number" id="n-total" value="0" oninput="updateReport()"></div>
+                                <div><label>重要場次</label><input type="number" id="n-imp-count" value="0" oninput="handleImpChange('n')"></div>
+                            </div>
+                            <div id="n-imp-fields" class="space-y-4"></div>
+                        </div>
+                    </div>`;
+            } else if (currentMode === 'single') {
+                container.innerHTML = `
+                    <div class="space-y-5">
+                        <div><label>案件名稱</label><input id="s-title" placeholder="如：OO抗議案" oninput="updateReport()"></div>
+                        <div><label>一、案情摘要</label><textarea id="s-summary" rows="5" placeholder="請輸入案情..." oninput="updateReport()"></textarea></div>
+                        <div><label>二、後續處置 (自動編號)</label><textarea id="s-action" rows="6" placeholder="請輸入處置情形..." oninput="updateReport()"></textarea></div>
+                        <div><label>提報單位</label><input id="s-unit" placeholder="屏東縣警局" oninput="updateReport()"></div>
+                    </div>`;
+            } else {
+                container.innerHTML = renderProjectFields();
+            }
+            updateReport();
+        }
+
+        function handleImpChange(day) {
+            const count = parseInt(document.getElementById(`${day}-imp-count`).value) || 0;
+            const field = document.getElementById(`${day}-imp-fields`);
+            field.innerHTML = '';
+            for(let i=1; i<=count; i++) {
+                const div = document.createElement('div');
+                div.className = "p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-4 mb-4";
+                if(day === 't') {
+                    div.innerHTML = `<p class="font-black text-sm text-blue-600 border-b pb-2 tracking-widest">重要場次 ${i}</p>
+                        <input placeholder="團體人名 (免引號)" class="t-who-${i}" oninput="updateReport()">
+                        <input placeholder="事由" class="t-why-${i}" oninput="updateReport()">
+                        <input placeholder="地點" class="t-where-${i}" oninput="updateReport()">
+                        <div class="grid grid-cols-2 gap-3"><select class="t-type-${i}" oninput="updateReport()"><option>集會</option><option>遊行</option><option>集會遊行</option></select>
+                        <input placeholder="人數" class="t-num-${i}" oninput="updateReport()"></div>
+                        <div class="grid grid-cols-2 gap-3"><input placeholder="開始時間 (1010)" class="t-start-${i}" oninput="updateReport()">
+                        <input placeholder="結束時間 (1045)" class="t-end-${i}" oninput="updateReport()"></div>
+                        <input placeholder="狀況 (狀況平和)" class="t-status-${i}" value="狀況平和" oninput="updateReport()">`;
+                } else {
+                    div.innerHTML = `<p class="font-black text-sm text-emerald-600 border-b pb-2 tracking-widest">明日重要場次 ${i}</p>
+                        <input placeholder="團體人名 (免引號)" class="n-who-${i}" oninput="updateReport()">
+                        <input placeholder="事由" class="n-why-${i}" oninput="updateReport()">
+                        <input placeholder="地點" class="n-where-${i}" oninput="updateReport()">
+                        <div class="grid grid-cols-2 gap-3"><select class="n-type-${i}" oninput="updateReport()"><option>集會</option><option>遊行</option><option>集會遊行</option></select>
+                        <input placeholder="時間 (10時)" class="n-time-${i}" oninput="updateReport()"></div>
+                        <input placeholder="預估人數" class="n-num-${i}" oninput="updateReport()">`;
+                }
+                field.appendChild(div);
+            }
+            updateReport();
+        }
+
+        function renderProjectFields() {
+            const common = `<div class="mb-4"><label>專案名稱</label><input id="p-title" placeholder="如：0316專案" oninput="updateReport()"></div>`;
+            
+            if(projectSubMode === 'planning') {
+                return common + `<div class="space-y-4">
+                <div><label>狀況 (人事時地物)</label><textarea id="p-st" rows="4" oninput="updateReport()"></textarea></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label>防處機關</label><input id="p-unit" oninput="updateReport()"></div>
+                    <div><label>指揮官</label><input id="p-cmd" placeholder="分局長OOO" oninput="updateReport()"></div>
+                    <div><label>分區數</label><input id="p-zone" placeholder="4分區" oninput="updateReport()"></div>
+                    <div><label>警力數</label><input id="p-pol" placeholder="135名" oninput="updateReport()"></div>
+                </div>
+                <div><label>阻材描述</label><input id="p-bar" value="交通改道牌30面" oninput="updateReport()"></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label>本署開設</label><input id="p-lv-1" value="8時30分起三級開設" oninput="updateReport()"></div>
+                    <div><label>機關開設</label><input id="p-lv-2" value="8時起三級開設" oninput="updateReport()"></div>
+                </div></div>`;
+            } else if(projectSubMode === 'initial') {
+                return common + `<div class="space-y-4">
+                <div><label>狀況描述 (自動編號)</label><textarea id="pi-1" rows="4" oninput="updateReport()"></textarea></div>
+                <div><label>勤務部署情形</label><textarea id="pi-2" rows="3" oninput="updateReport()"></textarea></div>
+                <div><label>目前現場狀況 (自動編號)</label><textarea id="pi-3" rows="4" oninput="updateReport()"></textarea></div></div>`;
+            } else if(projectSubMode === 'update') {
+                return common + `<div class="space-y-4">
+                <div><label>狀況 (簡述，活動概況已陳報於前)</label><textarea id="pu-1" rows="2" oninput="updateReport()"></textarea></div>
+                <div><label>目前活動狀況 (自動編號)</label><textarea id="pu-2" rows="6" oninput="updateReport()"></textarea></div></div>`;
+            } else {
+                return common + `<div class="space-y-4">
+                <div><label>狀況簡述</label><textarea id="pf-1" rows="3" oninput="updateReport()"></textarea></div>
+                <div><label>目前現場狀況 (自動編號)</label><textarea id="pf-2" rows="4" oninput="updateReport()"></textarea></div>
+                <div><label>擬處內容</label><textarea id="pf-3" rows="3" oninput="updateReport()" placeholder="「OO專案」本署10時30分結束三級開設..." oninput="updateReport()"></textarea></div></div>`;
+            }
+        }
+
+        function updateReport() {
+            const name = document.getElementById('signer-name').value;
+            let report = "";
+            if (currentMode === 'closing') {
+                report = generateClosing(name);
+            } else if (currentMode === 'single') {
+                report = generateSingle(name);
+            } else {
+                report = generateProject(name);
+            }
+            document.getElementById('report-output').textContent = report;
+        }
+
+        function generateClosing(name) {
+            const tTotal = document.getElementById('t-total').value || 0;
+            const tImp = parseInt(document.getElementById('t-imp-count').value) || 0;
+            const nTotal = document.getElementById('n-total').value || 0;
+            const nImp = parseInt(document.getElementById('n-imp-count').value) || 0;
+
+            let sections = [];
+
+            // 開頭
+            sections.push(currentTemplates.closing_header);
+
+            // 一、本日防處狀況
+            let todayStr = "";
+            if (tImp === 0) {
+                todayStr = currentTemplates.closing_today_none
+                    .replace(/{本日日期}/g, todayDate)
+                    .replace(/{本日總場次}/g, tTotal);
+            } else {
+                todayStr = currentTemplates.closing_today_has
+                    .replace(/{本日日期}/g, todayDate)
+                    .replace(/{本日總場次}/g, tTotal)
+                    .replace(/{本日重要場次}/g, tImp);
+
+                let items = [];
+                for (let i = 1; i <= tImp; i++) {
+                    const who = document.querySelector(`.t-who-${i}`)?.value || "【團體】";
+                    const why = document.querySelector(`.t-why-${i}`)?.value || "【事由】";
+                    const where = document.querySelector(`.t-where-${i}`)?.value || "【地點】";
+                    const type = document.querySelector(`.t-type-${i}`)?.value || "集會";
+                    const s = document.querySelector(`.t-start-${i}`)?.value || "0000";
+                    const e = document.querySelector(`.t-end-${i}`)?.value || "0000";
+                    const n = document.querySelector(`.t-num-${i}`)?.value || "0";
+                    const st = document.querySelector(`.t-status-${i}`)?.value || "狀況平和";
+
+                    let itemStr = currentTemplates.closing_today_item;
+                    if (tImp === 1) {
+                        itemStr = itemStr.replace(/（{項目編號}）|{項目編號}/g, '');
+                    } else {
+                        itemStr = itemStr.replace(/{項目編號}/g, toChineseNum(i));
+                    }
+
+                    itemStr = itemStr
+                        .replace(/{團體人名}/g, who)
+                        .replace(/{事由}/g, why)
+                        .replace(/{地點}/g, where)
+                        .replace(/{活動類型}/g, type)
+                        .replace(/{開始時間}/g, s)
+                        .replace(/{結束時間}/g, e)
+                        .replace(/{現場人數}/g, n)
+                        .replace(/{活動狀況}/g, st);
+
+                    items.push(itemStr);
+                }
+                todayStr += "\n" + items.join('\n');
+            }
+            sections.push(todayStr);
+
+            // 二、本日其餘無危安防處說明 (當今日有重要活動時存在)
+            let nextIdx = 2;
+            if (tImp > 0) {
+                sections.push(currentTemplates.closing_today_rest);
+                nextIdx = 3;
+            }
+
+            // 三、明日防處狀況
+            let tomorrowStr = "";
+            const tomorrowIdxStr = toChineseNum(nextIdx);
+            if (nImp === 0) {
+                tomorrowStr = currentTemplates.closing_tomorrow_none
+                    .replace(/{明日本日序號}/g, tomorrowIdxStr)
+                    .replace(/{明日日期}/g, nextDate)
+                    .replace(/{明日總場次}/g, nTotal);
+            } else {
+                tomorrowStr = currentTemplates.closing_tomorrow_has
+                    .replace(/{明日本日序號}/g, tomorrowIdxStr)
+                    .replace(/{明日日期}/g, nextDate)
+                    .replace(/{明日總場次}/g, nTotal)
+                    .replace(/{明日重要場次}/g, nImp);
+
+                let items = [];
+                for (let i = 1; i <= nImp; i++) {
+                    const who = document.querySelector(`.n-who-${i}`)?.value || "【團體】";
+                    const why = document.querySelector(`.n-why-${i}`)?.value || "【事由】";
+                    const where = document.querySelector(`.n-where-${i}`)?.value || "【地點】";
+                    const type = document.querySelector(`.n-type-${i}`)?.value || "集會";
+                    const t = document.querySelector(`.n-time-${i}`)?.value || "00時";
+                    const n = document.querySelector(`.n-num-${i}`)?.value || "0";
+
+                    let itemStr = currentTemplates.closing_tomorrow_item;
+                    if (nImp === 1) {
+                        itemStr = itemStr.replace(/（{項目編號}）|{項目編號}/g, '');
+                    } else {
+                        itemStr = itemStr.replace(/{項目編號}/g, toChineseNum(i));
+                    }
+
+                    itemStr = itemStr
+                        .replace(/{團體人名}/g, who)
+                        .replace(/{事由}/g, why)
+                        .replace(/{地點}/g, where)
+                        .replace(/{活動類型}/g, type)
+                        .replace(/{時間}/g, t)
+                        .replace(/{預估人數}/g, n);
+
+                    items.push(itemStr);
+                }
+                tomorrowStr += "\n" + items.join('\n') + "\n" + currentTemplates.closing_tomorrow_footer_has;
+            }
+            sections.push(tomorrowStr);
+
+            // 簽名
+            sections.push(`　　職 ${name} 敬陳`);
+
+            // 段落之間空一行
+            return sections.join('\n\n');
+        }
+
+        function generateSingle(name) {
+            const t = document.getElementById('s-title').value || "OO案";
+            const s = document.getElementById('s-summary').value || "";
+            const a = formatPoints(document.getElementById('s-action').value);
+            const u = document.getElementById('s-unit').value || "【提報單位】";
+
+            return currentTemplates.single_main
+                .replace(/{案件名稱}/g, t)
+                .replace(/{案情摘要}/g, s)
+                .replace(/{後續處置}/g, a)
+                .replace(/{提報單位}/g, u)
+                .replace(/{職章姓名}/g, name);
+        }
+
+        function generateProject(name) {
+            const t = document.getElementById('p-title').value || "專案";
+
+            if (projectSubMode === 'planning') {
+                return currentTemplates.project_planning
+                    .replace(/{專案名稱}/g, t)
+                    .replace(/{狀況描述}/g, document.getElementById('p-st').value || "")
+                    .replace(/{防處機關}/g, document.getElementById('p-unit').value || "")
+                    .replace(/{指揮官}/g, document.getElementById('p-cmd').value || "")
+                    .replace(/{分區數}/g, document.getElementById('p-zone').value || "")
+                    .replace(/{警力數}/g, document.getElementById('p-pol').value || "")
+                    .replace(/{阻材描述}/g, document.getElementById('p-bar').value || "")
+                    .replace(/{本署開設}/g, document.getElementById('p-lv-1').value || "")
+                    .replace(/{機關開設}/g, document.getElementById('p-lv-2').value || "")
+                    .replace(/{職章姓名}/g, name);
+            }
+            if (projectSubMode === 'initial') {
+                return currentTemplates.project_initial
+                    .replace(/{專案名稱}/g, t)
+                    .replace(/{狀況描述}/g, formatPoints(document.getElementById('pi-1').value))
+                    .replace(/{勤務部署情形}/g, document.getElementById('pi-2').value || "")
+                    .replace(/{目前現場狀況}/g, formatPoints(document.getElementById('pi-3').value))
+                    .replace(/{職章姓名}/g, name);
+            }
+            if (projectSubMode === 'update') {
+                return currentTemplates.project_update
+                    .replace(/{專案名稱}/g, t)
+                    .replace(/{狀況簡述}/g, document.getElementById('pu-1').value || "")
+                    .replace(/{目前活動狀況}/g, formatPoints(document.getElementById('pu-2').value))
+                    .replace(/{職章姓名}/g, name);
+            }
+            
+            // final 結報
+            return currentTemplates.project_final
+                .replace(/{專案名稱}/g, t)
+                .replace(/{狀況簡述}/g, document.getElementById('pf-1').value || "")
+                .replace(/{目前現場狀況}/g, formatPoints(document.getElementById('pf-2').value))
+                .replace(/{擬處內容}/g, document.getElementById('pf-3').value || "")
+                .replace(/{職章姓名}/g, name);
+        }
+
+        function copyReport() {
+            const text = document.getElementById('report-output').textContent;
+            const el = document.createElement('textarea');
+            el.value = text;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            const btn = document.querySelector('button[onclick="copyReport()"]');
+            const originalText = btn.innerText;
+            btn.innerText = "✅ 已複製";
+            btn.classList.replace('bg-blue-600', 'bg-emerald-600');
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.classList.replace('bg-emerald-600', 'bg-blue-600');
+            }, 2000);
+        }
+
+        // 當頁面載入時初始化
+        window.onload = function() {
+            loadTemplatesFromStorage();
+            renderForm();
+        };
+    </script>
+</body>
+</html>
